@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flask Form</title>
+</head>
+
+<body style="background-color: rgb(184, 62, 32);">
+    <h1>Write Whatever You Want In Here</h1>
+    <form action="{{ url_for('submit') }}" method="POST">
+        <label for="name">Hello, Tell Me Your Name:</label>
+        <input type="text" name="name" id="name" required><br><br>
+
+        <label for="email">Whats Your Email Bro:</label>
+        <input type="email" name="email" id="email" required><br><br>
+
+        <label for="message">Try And Attack me If you Dare:</label>
+        <textarea name="message" id="message" rows="4" required></textarea><br><br>
+
+        <input type="submit" value="Press Here to Get Hacked">
+    </form>
+
+    <h2>View All Entries</h2>
+    <a href="{{ url_for('entries') }}">Go to Entries</a>
+</body>
+
+</html>

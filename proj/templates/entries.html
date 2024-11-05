@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Entries</title>
+</head>
+
+<body style="background-color: rgb(230, 175, 173);">
+    <h1>All the stuff we have stolen</h1>
+    <ul>
+        {% for entry in entries %}
+        <li>
+            ID: {{ entry[0] }}<br>
+            Name: {{ entry[1] }}<br>
+            Email: {{ entry[2] }}<br>
+            Message: {{ entry[3] | safe }}<br>
+        </li>
+        {% endfor %}
+    </ul>
+    <a href="{{ url_for('index') }}">Back to Home</a>
+</body>
+
+</html>
