@@ -16,7 +16,14 @@ limiter = Limiter(
     get_remote_address,
     app=app,
     default_limits=["5 per minute"]  # Limit to 5 login attempts per minute
-)
+) 
+
+CLIENT_ID = "YOUR_CLIENT_ID"
+CLIENT_SECRET = "YOUR_CLIENT_SECRET"
+REDIRECT_URI = "http://localhost:8000/callback"
+AUTHORIZATION_URL = "https://provider.com/oauth2/authorize"
+TOKEN_URL = "https://provider.com/oauth2/token"
+USER_INFO_URL = "https://provider.com/userinfo"
 
 MAX_FAILED_ATTEMPTS = 3
 TIMEOUT_MINUTES = 5
@@ -70,7 +77,11 @@ def verify_password(input_password, stored_salt, stored_hash):
     computed_hash = hash_password(input_password, stored_salt)
     return computed_hash == stored_hash
 
-@app.route("/register", methods=["GET", "POST"])
+@app.route("/")
+def index():
+    return render_template("main.html")
+
+@app.route("/register", methods=["GET","POST"])
 def registerAccount():
     if request.method == "POST":
         username = bleach.clean(request.form["username"])
@@ -78,18 +89,24 @@ def registerAccount():
         password = bleach.clean(request.form["password"])
         salt = bcrypt.gensalt(rounds=12).decode('utf-8')
 
+
         # Hash the password and add salting
         hashedPassword = hash_password(password, salt)
+        try:
+            # Insert data into SQLite database
+            conn = sqlite3.connect("data.db")
+            c = conn.cursor()
+            c.execute(
+                "INSERT INTO users (username, email, password, salt) VALUES (?, ?, ?, ?)",
+                (username, email, hashedPassword, salt),
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            flash("Username or email already exists. Please try again.")
+            return redirect(url_for("registerAccount"))
+        finally:
+            conn.close()
 
-        # Insert data into SQLite database
-        conn = sqlite3.connect("data.db")
-        c = conn.cursor()
-        c.execute(
-            "INSERT INTO users (username, email, password, salt) VALUES (?, ?, ?, ?)",
-            (username, email, hashedPassword, salt),
-        )
-        conn.commit()
-        conn.close()
         return redirect(url_for("index"))
 
     return render_template("register.html")
@@ -133,16 +150,18 @@ def submit():
         name = bleach.clean(request.form["name"])
         email = bleach.clean(request.form["email"])
         message = bleach.clean(request.form["message"], tags=[], attributes={})
-
-        # Insert data into SQLite database
-        conn = sqlite3.connect("data.db")
-        c = conn.cursor()
-        c.execute(
-            "INSERT INTO entries (name, email, message) VALUES (?, ?, ?)",
-            (name, email, message),
-        )
-        conn.commit()
-        conn.close()
+        try:
+            conn = sqlite3.connect("data.db")
+            c = conn.cursor()
+            c.execute(
+                "INSERT INTO entries (name, email, message) VALUES (?, ?, ?)",
+                (name, email, message),
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            flash("An error occurred while submitting your message. Please try again.")
+        finally:
+            conn.close()
 
         return redirect(url_for("index"))
 
