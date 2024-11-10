@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, session
 import os
 import sqlite3
 import bleach
@@ -7,6 +7,8 @@ import bcrypt
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from datetime import datetime, timedelta
+from flask_oauthlib.client import OAuth
+import requests
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
@@ -18,12 +20,27 @@ limiter = Limiter(
     default_limits=["5 per minute"]  # Limit to 5 login attempts per minute
 ) 
 
-CLIENT_ID = "YOUR_CLIENT_ID"
-CLIENT_SECRET = "YOUR_CLIENT_SECRET"
+CLIENT_ID = os.environ.get("CLIENT_ID", "YOUR_CLIENT_ID")
+CLIENT_SECRET = os.environ.get("CLIENT_SECRET", "YOUR_CLIENT_SECRET")
 REDIRECT_URI = "http://localhost:8000/callback"
-AUTHORIZATION_URL = "https://provider.com/oauth2/authorize"
-TOKEN_URL = "https://provider.com/oauth2/token"
-USER_INFO_URL = "https://provider.com/userinfo"
+AUTHORIZATION_URL = "https://github.com/login/oauth/authorize"
+#TOKEN_URL = "https://github.com/login/oauth/access_token"
+USER_INFO_URL = "https://api.github.com/user"
+
+
+oauth = OAuth(app)
+github = oauth.remote_app(
+    'github',
+    consumer_key=os.environ.get("CLIENT_ID", "YOUR_CLIENT_ID"),
+    consumer_secret=os.environ.get("CLIENT_SECRET", "YOUR_CLIENT_SECRET"),
+    request_token_params={'scope': 'user:email'},
+    base_url='https://api.github.com/',
+    request_token_url=None,
+    access_token_method='POST',
+    access_token_url='https://github.com/login/oauth/access_token',
+    authorize_url='https://github.com/login/oauth/authorize'
+)
+
 
 MAX_FAILED_ATTEMPTS = 3
 TIMEOUT_MINUTES = 5
@@ -79,7 +96,7 @@ def verify_password(input_password, stored_salt, stored_hash):
 
 @app.route("/")
 def index():
-    return render_template("main.html")
+    return 'Welcome to the OAuth2. <a href="/login/oauth">Log in with GitHub</a>'
 
 @app.route("/register", methods=["GET","POST"])
 def registerAccount():
@@ -140,9 +157,42 @@ def login():
 
     return render_template("login.html")
 
-@app.route("/")
-def index():
-    return render_template("main.html")
+@app.route("/login/oauth")
+def login_oauth():
+    return github.authorize(callback=url_for('github_callback', _external=True))
+
+
+@app.route("/callback")
+def github_callback():
+    response = github.authorized_response()
+    if response is None or 'access_token' not in response:
+        flash("Authorization failed.")
+        return redirect(url_for("index"))
+
+    session['github_token'] = (response['access_token'], '')
+
+    # Fetch user details from GitHub
+    user_info = github.get('user')
+    user_data = user_info.data
+
+    # Store user details securely in the database
+    try:
+        conn = sqlite3.connect("data.db")
+        c = conn.cursor()
+        c.execute(
+            "INSERT OR IGNORE INTO users (username, email, password, salt) VALUES (?, ?, ?, ?)",
+            (user_data["login"], user_data["email"], "OAuth2_user", "OAuth2_salt")
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    flash(f"Welcome, {user_data['login']}! You have logged in successfully.")
+    return redirect(url_for("index"))
+
+@github.tokengetter
+def get_github_oauth_token():
+    return session.get('github_token')
 
 @app.route("/submit", methods=["POST"])
 def submit():
