@@ -1,27 +1,38 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, flash
+import os
 import sqlite3
 import bleach
 import hashlib
 import bcrypt
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from datetime import datetime, timedelta
+
 app = Flask(__name__)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
 
+# Initialize Flask-Limiter for rate limiting
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["5 per minute"]  # Limit to 5 login attempts per minute
+)
 
+MAX_FAILED_ATTEMPTS = 3
+TIMEOUT_MINUTES = 5
+
+# Database initialization functions
 def clear_db():
     conn = sqlite3.connect("data.db")
     c = conn.cursor()
-
     conn.commit()
     conn.close()
-
 
 def insert_default_data():
     conn = sqlite3.connect("data.db")
     c = conn.cursor()
-
-    # Insert default data (adjust based on your data)
     c.execute("DROP TABLE IF EXISTS entries;")
-    c.execute(
-        """
+    c.execute("""
         CREATE TABLE IF NOT EXISTS entries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -30,11 +41,8 @@ def insert_default_data():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-    """
-    )
-
-    c.execute(
-        """
+    """)
+    c.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT NOT NULL UNIQUE,
@@ -42,16 +50,12 @@ def insert_default_data():
             password TEXT NOT NULL,
             salt BLOB NOT NULL
         )
-    """
-    )
-
+    """)
     c.execute("INSERT INTO entries (name, email, message) VALUES (?, ?, ?)", ("Lejla", "lejlam@uia.no", "Cowboy-Laila"))
     c.execute("INSERT INTO entries (name, email, message) VALUES (?, ?, ?)", ("Lina", "linaha@uia.no", "Lol"))
     c.execute("INSERT INTO entries (name, email, message) VALUES (?, ?, ?)", ("Julia", "juliamm@uia.no", "McLaren"))
-    
     conn.commit()
     conn.close()
-
 
 def init_db():
     clear_db()
@@ -66,7 +70,7 @@ def verify_password(input_password, stored_salt, stored_hash):
     computed_hash = hash_password(input_password, stored_salt)
     return computed_hash == stored_hash
 
-@app.route("/register", methods=["GET","POST"])
+@app.route("/register", methods=["GET", "POST"])
 def registerAccount():
     if request.method == "POST":
         username = bleach.clean(request.form["username"])
@@ -90,11 +94,10 @@ def registerAccount():
 
     return render_template("register.html")
 
-@app.route("/login", methods=["GET","POST"])
+@app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         username = bleach.clean(request.form["username"])
-        email = bleach.clean(request.form["email"])
         password = bleach.clean(request.form["password"])
 
         # Connect to the database
@@ -102,25 +105,27 @@ def login():
         cursor = conn.cursor()
 
         # Get the salt and password that are stored in the db for the chosen user
-        cursor.execute("SELECT password, salt FROM users WHERE username = ? or email = ?", (username, email))
+        cursor.execute("SELECT password, salt FROM users WHERE username = ? OR email = ?", (username, username))
         user = cursor.fetchone()
         conn.close()
 
-        # Check is the password that is given matches with the password that is in the db
+        # Check if the user is found
+        if not user:
+            flash("User not found.")
+            return render_template("login.html")
+
+        # Check if the password is correct
         if verify_password(password, user[1], user[0]):
             return redirect(url_for("index"))
         else:
-                print("Invalid password")  # Debugging
-    else:
-            print("User not found")  # Debugging
+            flash("Invalid password.")
+            return render_template("login.html")
 
     return render_template("login.html")
-
 
 @app.route("/")
 def index():
     return render_template("main.html")
-
 
 @app.route("/submit", methods=["POST"])
 def submit():
@@ -141,8 +146,6 @@ def submit():
 
         return redirect(url_for("index"))
 
-
-# bleach når vi henter data fra databasen
 @app.route("/entries")
 def entries():
     conn = sqlite3.connect("data.db")
@@ -151,14 +154,10 @@ def entries():
     entries = c.fetchall()
     conn.close()
 
-    sanitized_entries = []
-    for entry in entries:
-        sanitized_name = bleach.clean(entry[1])  # Sanitizing the name
-        sanitized_email = bleach.clean(entry[2], tags=[], attributes={})  # Sanitizing the message
-        sanitized_message = bleach.clean(entry[3], tags=[], attributes={})
-        sanitized_entries.append((entry[0], sanitized_name, sanitized_email, sanitized_message))  # Appending sanitized data
-
-
+    sanitized_entries = [
+        (entry[0], bleach.clean(entry[1]), bleach.clean(entry[2], tags=[], attributes={}), bleach.clean(entry[3], tags=[], attributes={}))
+        for entry in entries
+    ]
     return render_template("entries.html", entries=sanitized_entries)
 
 if __name__ == "__main__":
