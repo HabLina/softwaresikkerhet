@@ -9,9 +9,15 @@ from flask_limiter.util import get_remote_address
 from datetime import datetime, timedelta
 from flask_oauthlib.client import OAuth
 import requests
+import pyotp
+import qrcode
+from io import BytesIO
+from flask import send_file
+from PIL import Image, ImageDraw
+import base64
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", b'\x129)t\x1en\xc3\x0f\x1by\x06O\xba+\xf3\x05\xe9p"\xf9\xc0tN\xb8')  
 
 # Initialize Flask-Limiter for rate limiting
 limiter = Limiter(
@@ -72,7 +78,8 @@ def insert_default_data():
             username TEXT NOT NULL UNIQUE,
             email TEXT NOT NULL UNIQUE,
             password TEXT NOT NULL,
-            salt BLOB NOT NULL
+            salt BLOB NOT NULL,
+            totp_secret TEXT NOT NULL
         )
     """)
     c.execute("INSERT INTO entries (name, email, message) VALUES (?, ?, ?)", ("Lejla", "lejlam@uia.no", "Cowboy-Laila"))
@@ -98,7 +105,7 @@ def verify_password(input_password, stored_salt, stored_hash):
 def index():
     return 'Welcome to the OAuth2. <a href="/login/oauth">Log in with GitHub</a>'
 
-@app.route("/register", methods=["GET","POST"])
+@app.route("/register", methods=["GET", "POST"])
 def registerAccount():
     if request.method == "POST":
         username = bleach.clean(request.form["username"])
@@ -109,22 +116,47 @@ def registerAccount():
 
         # Hash the password and add salting
         hashedPassword = hash_password(password, salt)
+
+        # Generating a TOTP secret for the user
+        totp_secret = pyotp.random_base32()
+
         try:
             # Insert data into SQLite database
             conn = sqlite3.connect("data.db")
             c = conn.cursor()
+            
+            # Debug: Print what we are about to insert
+            print(f"Trying to insert: {username}, {email}, {hashedPassword}, {salt}, {totp_secret}")
+            
             c.execute(
-                "INSERT INTO users (username, email, password, salt) VALUES (?, ?, ?, ?)",
-                (username, email, hashedPassword, salt),
+                "INSERT INTO users (username, email, password, salt, totp_secret) VALUES (?, ?, ?, ?, ?)",
+                (username, email, hashedPassword, salt, totp_secret),
             )
             conn.commit()
-        except sqlite3.IntegrityError:
-            flash("Username or email already exists. Please try again.")
-            return redirect(url_for("registerAccount"))
+
+            # Debug: Check if the commit was successful
+            print("User successfully added to the database.")
+            
+        except sqlite3.Error as e:
+            # If there's a database error, print it and show an error page
+            print(f"Database error: {e}")
+            error_message = "An error occurred while registering. Please try again."
+            return render_template("error.html", error_message=error_message)
+        
         finally:
+            # Ensure the connection is closed
             conn.close()
 
-        return redirect(url_for("index"))
+        # If insertion is successful, generate the QR code
+        totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=email, issuer_name="MyApp")
+        qr = qrcode.make(totp_uri)
+        buf = BytesIO()
+        qr.save(buf, format="PNG")
+        buf.seek(0)
+        qr_code_data = base64.b64encode(buf.getvalue()).decode('utf-8')  # Convert to Base64
+
+        # Pass the QR code data to the template
+        return render_template("qrcode.html", qr_code_data=qr_code_data)
 
     return render_template("register.html")
 
@@ -133,27 +165,35 @@ def login():
     if request.method == "POST":
         username = bleach.clean(request.form["username"])
         password = bleach.clean(request.form["password"])
+        email = bleach.clean(request.form["email"])
+        totp_code = request.form["totp_code"]
 
         # Connect to the database
         conn = sqlite3.connect('data.db')
         cursor = conn.cursor()
 
         # Get the salt and password that are stored in the db for the chosen user
-        cursor.execute("SELECT password, salt FROM users WHERE username = ? OR email = ?", (username, username))
+        cursor.execute("SELECT password, salt, totp_secret FROM users WHERE username = ? OR email = ?", (username, email))
         user = cursor.fetchone()
         conn.close()
 
         # Check if the user is found
         if not user:
-            flash("User not found.")
-            return render_template("login.html")
+           error_message = "User not found. Are you trying to hack us?"
+           return render_template("error.html", error_message=error_message)
+
 
         # Check if the password is correct
         if verify_password(password, user[1], user[0]):
-            return redirect(url_for("index"))
+            totp = pyotp.TOTP(user[2])  # Use the TOTP secret from the database
+            if not totp.verify(totp_code, valid_window=1):
+                error_message = "Invalid TOTP code. Are you trying to brute-force us?"
+                return render_template("error.html", error_message=error_message)
+            return render_template("entries.html")
+        
         else:
-            flash("Invalid password.")
-            return render_template("login.html")
+            error_message = "Invalid password. No XSS attacks here."
+            return render_template("error.html", error_message=error_message)
 
     return render_template("login.html")
 
@@ -231,4 +271,4 @@ def entries():
 
 if __name__ == "__main__":
     init_db()
-    app.run(port=8000, debug=True)
+    app.run(host="0.0.0.0", port=8000, debug=True)

@@ -1,7 +1,14 @@
-flask
+Flask
+flask-limiter
 bleach
 bcrypt
+<<<<<<< HEAD
 requests
 flask_oauthlib
 werkzeug<2.1.0
 flask_limiter
+=======
+pyotp
+qrcode
+Pillow
+>>>>>>> 31a0294 (oppgave 4)

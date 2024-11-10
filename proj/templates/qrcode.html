@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Scan QR Code</title>
+</head>
+<body>
+    <h1>Scan this QR Code with Your Authenticator App</h1>
+    <p>Once you have scanned the QR code, click the button below to complete your registration.</p>
+    <img src="data:image/png;base64,{{ qr_code_data }}" alt="QR Code">
+    <br><br>
+    <a href="{{ url_for('login') }}">Finish Registration and Go to Login</a>
+</body>
+</html>
