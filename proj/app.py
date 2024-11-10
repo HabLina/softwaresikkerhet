@@ -32,14 +32,15 @@ def insert_default_data():
         )
     """
     )
-    c.execute("DROP TABLE IF EXISTS users;")
+
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT NOT NULL UNIQUE,
             email TEXT NOT NULL UNIQUE,
-            password TEXT NOT NULL
+            password TEXT NOT NULL,
+            salt BLOB NOT NULL
         )
     """
     )
@@ -47,8 +48,6 @@ def insert_default_data():
     c.execute("INSERT INTO entries (name, email, message) VALUES (?, ?, ?)", ("Lejla", "lejlam@uia.no", "Cowboy-Laila"))
     c.execute("INSERT INTO entries (name, email, message) VALUES (?, ?, ?)", ("Lina", "linaha@uia.no", "Lol"))
     c.execute("INSERT INTO entries (name, email, message) VALUES (?, ?, ?)", ("Julia", "juliamm@uia.no", "McLaren"))
-
-    c.execute("INSERT INTO users (username, email, password) VALUES (?, ?, ?)", ("admin1", "admin@uia.no", "admin1."))
     
     conn.commit()
     conn.close()
@@ -58,30 +57,64 @@ def init_db():
     clear_db()
     insert_default_data()
 
+def hash_password(password, salt):
+    combined = (salt + password).encode('utf-8')
+    return hashlib.sha256(combined).hexdigest()
+
+# Function to check if password is correct
+def verify_password(input_password, stored_salt, stored_hash):
+    computed_hash = hash_password(input_password, stored_salt)
+    return computed_hash == stored_hash
+
 @app.route("/register", methods=["GET","POST"])
 def registerAccount():
     if request.method == "POST":
         username = bleach.clean(request.form["username"])
         email = bleach.clean(request.form["email"])
         password = bleach.clean(request.form["password"])
+        salt = bcrypt.gensalt(rounds=12).decode('utf-8')
 
-        # Hash the password
-        combine = (bcrypt.gensalt(rounds=12) + password.encode())
-        hashedPassword = hashlib.sha256(combine).hexdigest()
-
+        # Hash the password and add salting
+        hashedPassword = hash_password(password, salt)
 
         # Insert data into SQLite database
         conn = sqlite3.connect("data.db")
         c = conn.cursor()
         c.execute(
-            "INSERT INTO users (username, email, password) VALUES (?, ?, ?)",
-            (username, email, hashedPassword),
+            "INSERT INTO users (username, email, password, salt) VALUES (?, ?, ?, ?)",
+            (username, email, hashedPassword, salt),
         )
         conn.commit()
         conn.close()
         return redirect(url_for("index"))
 
     return render_template("register.html")
+
+@app.route("/login", methods=["GET","POST"])
+def login():
+    if request.method == "POST":
+        username = bleach.clean(request.form["username"])
+        email = bleach.clean(request.form["email"])
+        password = bleach.clean(request.form["password"])
+
+        # Connect to the database
+        conn = sqlite3.connect('data.db')
+        cursor = conn.cursor()
+
+        # Get the salt and password that are stored in the db for the chosen user
+        cursor.execute("SELECT password, salt FROM users WHERE username = ? or email = ?", (username, email))
+        user = cursor.fetchone()
+        conn.close()
+
+        # Check is the password that is given matches with the password that is in the db
+        if verify_password(password, user[1], user[0]):
+            return redirect(url_for("index"))
+        else:
+                print("Invalid password")  # Debugging
+    else:
+            print("User not found")  # Debugging
+
+    return render_template("login.html")
 
 
 @app.route("/")
