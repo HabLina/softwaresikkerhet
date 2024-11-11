@@ -15,7 +15,9 @@
             ID: {{ entry[0] }}<br>
             Name: {{ entry[1] }}<br>
             Email: {{ entry[2] }}<br>
-            Message: {{ entry[3] | safe }}<br>
+            Message: {{ entry[3] }}<br>
+            Date created: {{ entry[4] }}<br>
+            Updated: {{ entry[5] }}<br>
         </li>
         {% endfor %}
     </ul>

@@ -17,7 +17,8 @@ from PIL import Image, ImageDraw
 import base64
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", b'\x129)t\x1en\xc3\x0f\x1by\x06O\xba+\xf3\x05\xe9p"\xf9\xc0tN\xb8')  
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", b'\x129)t\x1en\xc3\x0f\x1by\x06O\xba+\xf3\x05\xe9p"\xf9\xc0tN\xb8') 
+
 
 # Initialize Flask-Limiter for rate limiting
 limiter = Limiter(
@@ -26,11 +27,12 @@ limiter = Limiter(
     default_limits=["5 per minute"]  # Limit to 5 login attempts per minute
 ) 
 
+
+
 CLIENT_ID = os.environ.get("CLIENT_ID", "YOUR_CLIENT_ID")
 CLIENT_SECRET = os.environ.get("CLIENT_SECRET", "YOUR_CLIENT_SECRET")
 REDIRECT_URI = "http://localhost:8000/callback"
 AUTHORIZATION_URL = "https://github.com/login/oauth/authorize"
-#TOKEN_URL = "https://github.com/login/oauth/access_token"
 USER_INFO_URL = "https://api.github.com/user"
 
 
@@ -51,12 +53,15 @@ github = oauth.remote_app(
 MAX_FAILED_ATTEMPTS = 3
 TIMEOUT_MINUTES = 5
 
+
 # Database initialization functions
 def clear_db():
     conn = sqlite3.connect("data.db")
     c = conn.cursor()
     conn.commit()
     conn.close()
+
+
 
 def insert_default_data():
     conn = sqlite3.connect("data.db")
@@ -82,28 +87,42 @@ def insert_default_data():
             totp_secret TEXT NOT NULL
         )
     """)
+
     c.execute("INSERT INTO entries (name, email, message) VALUES (?, ?, ?)", ("Lejla", "lejlam@uia.no", "Cowboy-Laila"))
     c.execute("INSERT INTO entries (name, email, message) VALUES (?, ?, ?)", ("Lina", "linaha@uia.no", "Lol"))
     c.execute("INSERT INTO entries (name, email, message) VALUES (?, ?, ?)", ("Julia", "juliamm@uia.no", "McLaren"))
     conn.commit()
     conn.close()
 
+
+
 def init_db():
     clear_db()
     insert_default_data()
 
+
+
 def hash_password(password, salt):
     combined = (salt + password).encode('utf-8')
     return hashlib.sha256(combined).hexdigest()
+
+
 
 # Function to check if password is correct
 def verify_password(input_password, stored_salt, stored_hash):
     computed_hash = hash_password(input_password, stored_salt)
     return computed_hash == stored_hash
 
+
+
 @app.route("/")
 def index():
-    return 'Welcome to the OAuth2. <a href="/login/oauth">Log in with GitHub</a>'
+    if 'userId' not in session:
+        return render_template("main.html")
+    else:
+        return render_template("logout.html")
+
+
 
 @app.route("/register", methods=["GET", "POST"])
 def registerAccount():
@@ -160,6 +179,8 @@ def registerAccount():
 
     return render_template("register.html")
 
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -173,7 +194,7 @@ def login():
         cursor = conn.cursor()
 
         # Get the salt and password that are stored in the db for the chosen user
-        cursor.execute("SELECT password, salt, totp_secret FROM users WHERE username = ? OR email = ?", (username, email))
+        cursor.execute("SELECT password, salt, totp_secret, id FROM users WHERE username = ? OR email = ?", (username, email))
         user = cursor.fetchone()
         conn.close()
 
@@ -189,7 +210,9 @@ def login():
             if not totp.verify(totp_code, valid_window=1):
                 error_message = "Invalid TOTP code. Are you trying to brute-force us?"
                 return render_template("error.html", error_message=error_message)
-            return render_template("entries.html")
+            else:
+                session['userId'] = user[3]
+            return redirect(url_for('entries'))
         
         else:
             error_message = "Invalid password. No XSS attacks here."
@@ -197,9 +220,12 @@ def login():
 
     return render_template("login.html")
 
+
+
 @app.route("/login/oauth")
 def login_oauth():
     return github.authorize(callback=url_for('github_callback', _external=True))
+
 
 
 @app.route("/callback")
@@ -226,13 +252,17 @@ def github_callback():
         conn.commit()
     finally:
         conn.close()
-
+    session['userId'] = user_data["login"]
     flash(f"Welcome, {user_data['login']}! You have logged in successfully.")
-    return redirect(url_for("index"))
+    return redirect(url_for("login"))
+
+
 
 @github.tokengetter
 def get_github_oauth_token():
     return session.get('github_token')
+
+
 
 @app.route("/submit", methods=["POST"])
 def submit():
@@ -255,19 +285,33 @@ def submit():
 
         return redirect(url_for("index"))
 
+
+
 @app.route("/entries")
 def entries():
-    conn = sqlite3.connect("data.db")
-    c = conn.cursor()
-    c.execute("SELECT * FROM entries")
-    entries = c.fetchall()
-    conn.close()
+    if 'userId' not in session:
+        return render_template('error.html', error_message='You need to log in')
+    else:
+        conn = sqlite3.connect("data.db")
+        c = conn.cursor()
+        c.execute("SELECT * FROM entries")
+        entries = c.fetchall()
+        conn.close()
 
-    sanitized_entries = [
-        (entry[0], bleach.clean(entry[1]), bleach.clean(entry[2], tags=[], attributes={}), bleach.clean(entry[3], tags=[], attributes={}))
-        for entry in entries
-    ]
-    return render_template("entries.html", entries=sanitized_entries)
+        sanitized_entries = [
+            (entry[0], bleach.clean(entry[1]), bleach.clean(entry[2], tags=[], attributes={}), bleach.clean(entry[3], tags=[], attributes={}), entry[4], entry[5])
+            for entry in entries
+        ]
+        return render_template("entries.html", entries=sanitized_entries)
+    
+
+
+@app.route("/logout")
+def logout():
+    session.pop("userId", None)
+    return (redirect(url_for("index")))
+
+
 
 if __name__ == "__main__":
     init_db()

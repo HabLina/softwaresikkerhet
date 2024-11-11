@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>First page</title>
+
+    <style>
+        .main-nav {
+            list-style-type: none; /* Remove bullet points */
+            padding: 0; /* Remove padding */
+            margin: 0; /* Remove margin */
+            display: flex; /* Display items in a row */
+            justify-content: flex-end; /* Align items to the right */
+        }
+
+        .main-nav li {
+            margin-right: 10px; /* Space between buttons */
+        }
+
+        .button-link {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #007bff; /* Button color */
+            color: white;
+            text-align: center;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+
+        .button-link:hover {
+            background-color: #0056b3; /* Hover color */
+        }
+    </style>
+</head>
+
+<body style="background-color: rgb(255, 255, 255);">
+    <ul class="main-nav nav navbar-nav navbar-right" >
+        <li>
+            <a href="{{ url_for('entries') }}" class="button-link">Entries</a>
+        </li>
+        <li>
+            <a href="{{ url_for('logout') }}" class="button-link">Logout</a>
+        </li>
+    </ul>
+    <span class="navbar-text" id="mylink"></span>
+</body>
+
+</html>
