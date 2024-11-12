@@ -6,14 +6,10 @@ import hashlib
 import bcrypt
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from datetime import datetime, timedelta
 from flask_oauthlib.client import OAuth
-import requests
 import pyotp
 import qrcode
 from io import BytesIO
-from flask import send_file
-from PIL import Image, ImageDraw
 import base64
 
 app = Flask(__name__)
@@ -54,15 +50,6 @@ MAX_FAILED_ATTEMPTS = 3
 TIMEOUT_MINUTES = 5
 
 
-# Database initialization functions
-def clear_db():
-    conn = sqlite3.connect("data.db")
-    c = conn.cursor()
-    conn.commit()
-    conn.close()
-
-
-
 def insert_default_data():
     conn = sqlite3.connect("data.db")
     c = conn.cursor()
@@ -87,14 +74,6 @@ def insert_default_data():
     """)
     conn.commit()
     conn.close()
-
-
-
-def init_db():
-    clear_db()
-    insert_default_data()
-
-
 
 def hash_password(password, salt):
     combined = (salt + password).encode('utf-8')
@@ -308,5 +287,5 @@ def logout():
 
 
 if __name__ == "__main__":
-    init_db()
+    insert_default_data()
     app.run(host="0.0.0.0", port=8000, debug=True)
