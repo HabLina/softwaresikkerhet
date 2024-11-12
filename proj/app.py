@@ -66,15 +66,13 @@ def clear_db():
 def insert_default_data():
     conn = sqlite3.connect("data.db")
     c = conn.cursor()
-    c.execute("DROP TABLE IF EXISTS entries;")
     c.execute("""
         CREATE TABLE IF NOT EXISTS entries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             email TEXT NOT NULL UNIQUE,
             message TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
     c.execute("""
@@ -87,10 +85,6 @@ def insert_default_data():
             totp_secret TEXT NOT NULL
         )
     """)
-
-    c.execute("INSERT INTO entries (name, email, message) VALUES (?, ?, ?)", ("Lejla", "lejlam@uia.no", "Cowboy-Laila"))
-    c.execute("INSERT INTO entries (name, email, message) VALUES (?, ?, ?)", ("Lina", "linaha@uia.no", "Lol"))
-    c.execute("INSERT INTO entries (name, email, message) VALUES (?, ?, ?)", ("Julia", "juliamm@uia.no", "McLaren"))
     conn.commit()
     conn.close()
 
@@ -254,7 +248,7 @@ def github_callback():
         conn.close()
     session['userId'] = user_data["login"]
     flash(f"Welcome, {user_data['login']}! You have logged in successfully.")
-    return redirect(url_for("login"))
+    return render_template("logout.html")
 
 
 
